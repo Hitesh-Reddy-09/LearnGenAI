@@ -9,6 +9,12 @@ const { connectDatabase } = require('./src/utils/database');
 const logger = require('./src/utils/logger');
 const { PORT, NODE_ENV } = require('./src/utils/constants');
 
+// Import routes
+const authRoutes = require('./src/routes/auth');
+
+// Import middleware
+const { errorHandler } = require('./src/middleware/errorHandler');
+
 const app = express();
 
 // Security middleware
@@ -66,7 +72,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API routes will be added here
+// API routes
 app.get('/api', (req, res) => {
   res.json({
     message: 'Welcome to LearnGenAI API',
@@ -74,6 +80,9 @@ app.get('/api', (req, res) => {
     documentation: '/api/docs'
   });
 });
+
+// Mount routes
+app.use('/api/auth', authRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
@@ -84,19 +93,7 @@ app.use('*', (req, res) => {
 });
 
 // Global error handling middleware
-app.use((err, req, res, next) => {
-  logger.error('Unhandled error:', err);
-  
-  const statusCode = err.statusCode || 500;
-  const message = err.message || 'Internal Server Error';
-  
-  res.status(statusCode).json({
-    error: {
-      message: NODE_ENV === 'production' ? 'Internal Server Error' : message,
-      ...(NODE_ENV !== 'production' && { stack: err.stack })
-    }
-  });
-});
+app.use(errorHandler);
 
 // Start server
 const startServer = async () => {
@@ -109,6 +106,7 @@ const startServer = async () => {
       logger.info(`🚀 LearnGenAI Backend server running on port ${PORT}`);
       logger.info(`📊 Environment: ${NODE_ENV}`);
       logger.info(`🔗 Health check: http://localhost:${PORT}/health`);
+      logger.info(`🔐 Auth endpoints: http://localhost:${PORT}/api/auth`);
     });
   } catch (error) {
     logger.error('Failed to start server:', error);
