@@ -9,6 +9,8 @@ import Home from './pages/Home';
 import Generate from './pages/Generate';
 import Course from './pages/Course';
 import Dashboard from './pages/Dashboard';
+import ResetPassword from './pages/ResetPassword';
+import ProtectedRoute from './components/auth/ProtectedRoute';
 
 function App() {
   return (
@@ -29,9 +31,31 @@ function AppContent() {
       <AnimatePresence mode="wait">
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/generate" element={<Generate />} />
-          <Route path="/course/:id" element={<Course />} />
-          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/reset-password/:token" element={<ResetPassword />} />
+          <Route 
+            path="/generate" 
+            element={
+              <ProtectedRoute>
+                <Generate />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/course/:id" 
+            element={
+              <ProtectedRoute>
+                <Course />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/dashboard" 
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } 
+          />
         </Routes>
       </AnimatePresence>
       <Footer />
