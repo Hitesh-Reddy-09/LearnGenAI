@@ -1,23 +1,66 @@
-const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const compression = require('compression');
-const rateLimit = require('express-rate-limit');
+// backend/server.js
+console.log('🟢 Server script started');
+
 require('dotenv').config();
+console.log('✅ .env loaded');
 
-const { connectDatabase } = require('./src/utils/database');
-const logger = require('./src/utils/logger');
-const { PORT, NODE_ENV } = require('./src/utils/constants');
+let express, cors, helmet, compression, rateLimit, connectDatabase, logger, PORT, NODE_ENV, apiRoutes, errorHandler;
 
-// Import routes
-const authRoutes = require('./src/routes/auth');
+try {
+  express = require('express');
+  cors = require('cors');
+  helmet = require('helmet');
+  compression = require('compression');
+  rateLimit = require('express-rate-limit');
+  console.log('✅ Core packages loaded');
+} catch (err) {
+  console.error('❌ Failed to load core packages:', err);
+  process.exit(1);
+}
 
-// Import middleware
-const { errorHandler } = require('./src/middleware/errorHandler');
+try {
+  connectDatabase = require('./src/utils/database').connectDatabase;
+  console.log('✅ Database utils loaded');
+} catch (err) {
+  console.error('❌ Failed to load database utils:', err);
+  process.exit(1);
+}
+
+try {
+  logger = require('./src/utils/logger');
+  console.log('✅ Logger loaded');
+} catch (err) {
+  console.error('❌ Failed to load logger:', err);
+  logger = console; // fallback
+}
+
+try {
+  ({ PORT, NODE_ENV } = require('./src/utils/constants'));
+  console.log('✅ Constants loaded:', { PORT, NODE_ENV });
+} catch (err) {
+  logger.error('❌ Failed to load constants:', err);
+  process.exit(1);
+}
+
+try {
+  apiRoutes = require('./src/routes');
+  console.log('✅ Routes loaded');
+} catch (err) {
+  logger.error('❌ Failed to load routes:', err);
+  process.exit(1);
+}
+
+try {
+  errorHandler = require('./src/middleware/errorHandler').errorHandler;
+  console.log('✅ Error handler loaded');
+} catch (err) {
+  logger.error('❌ Failed to load error handler:', err);
+  process.exit(1);
+}
 
 const app = express();
 
-// Security middleware
+// Security
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -28,41 +71,39 @@ app.use(helmet({
     },
   },
 }));
+console.log('✅ Helmet configured');
 
-// CORS configuration
-const corsOptions = {
+// CORS
+app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
   credentials: true,
   optionsSuccessStatus: 200,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-};
-app.use(cors(corsOptions));
+}));
+console.log('✅ CORS configured');
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.',
+// Middleware
+app.use(rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: 'Too many requests, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
-});
-app.use(limiter);
+}));
+console.log('✅ Rate limiter configured');
 
-// Compression middleware
 app.use(compression());
-
-// Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+console.log('✅ Middleware configured');
 
-// Request logging middleware
 app.use((req, res, next) => {
   logger.info(`${req.method} ${req.path} - ${req.ip}`);
   next();
 });
 
-// Health check endpoint
+// Health check
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'OK',
@@ -72,7 +113,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API routes
+// Test route
 app.get('/api', (req, res) => {
   res.json({
     message: 'Welcome to LearnGenAI API',
@@ -81,10 +122,10 @@ app.get('/api', (req, res) => {
   });
 });
 
-// Mount routes
-app.use('/api/auth', authRoutes);
+// Routes
+app.use('/api', apiRoutes);
 
-// 404 handler
+// 404 Handler
 app.use('*', (req, res) => {
   res.status(404).json({
     error: 'Route not found',
@@ -92,38 +133,34 @@ app.use('*', (req, res) => {
   });
 });
 
-// Global error handling middleware
+// Global error handler
 app.use(errorHandler);
 
 // Start server
 const startServer = async () => {
   try {
-    // Connect to database
     await connectDatabase();
-    
-    // Start listening
+    console.log('✅ Database connected');
+
     app.listen(PORT, () => {
-      logger.info(`🚀 LearnGenAI Backend server running on port ${PORT}`);
-      logger.info(`📊 Environment: ${NODE_ENV}`);
-      logger.info(`🔗 Health check: http://localhost:${PORT}/health`);
-      logger.info(`🔐 Auth endpoints: http://localhost:${PORT}/api/auth`);
+      logger.info(`🚀 Server running on http://localhost:${PORT}`);
+      logger.info(`🔗 Health: http://localhost:${PORT}/health`);
     });
   } catch (error) {
-    logger.error('Failed to start server:', error);
+    logger.error('❌ Server failed to start:', error);
     process.exit(1);
   }
 };
 
-// Handle unhandled promise rejections
+// Global crash handlers
 process.on('unhandledRejection', (err) => {
-  logger.error('Unhandled Promise Rejection:', err);
+  logger.error('💥 Unhandled Rejection:', err);
   process.exit(1);
 });
 
-// Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
-  logger.error('Uncaught Exception:', err);
+  logger.error('💥 Uncaught Exception:', err);
   process.exit(1);
 });
 
-startServer(); 
+startServer();

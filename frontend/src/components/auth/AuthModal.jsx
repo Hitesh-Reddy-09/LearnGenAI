@@ -60,7 +60,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'signin' }) => {
         newErrors.password = 'Password is required';
       } else if (formData.password.length < 8) {
         newErrors.password = 'Password must be at least 8 characters';
-      } else if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/.test(formData.password)) {
+      } else if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/.test(formData.password)) {
         newErrors.password = 'Password must contain uppercase, lowercase, number, and special character';
       }
     }
@@ -77,7 +77,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'signin' }) => {
         newErrors.newPassword = 'New password is required';
       } else if (formData.newPassword.length < 8) {
         newErrors.newPassword = 'Password must be at least 8 characters';
-      } else if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/.test(formData.newPassword)) {
+      } else if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/.test(formData.newPassword)) {
         newErrors.newPassword = 'Password must contain uppercase, lowercase, number, and special character';
       }
       if (formData.newPassword !== formData.confirmNewPassword) {

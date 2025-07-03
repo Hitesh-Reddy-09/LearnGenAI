@@ -16,8 +16,7 @@ const certificateSchema = new mongoose.Schema({
   certificateId: {
     type: String,
     required: [true, 'Certificate ID is required'],
-    unique: true,
-    index: true
+    unique: true
   },
   issuedDate: {
     type: Date,
@@ -32,8 +31,7 @@ const certificateSchema = new mongoose.Schema({
   verificationHash: {
     type: String,
     required: [true, 'Verification hash is required'],
-    unique: true,
-    index: true
+    unique: true
   },
   pdfUrl: {
     type: String,
@@ -147,7 +145,6 @@ certificateSchema.index({ status: 1 });
 certificateSchema.index({ issuedDate: -1 });
 certificateSchema.index({ completionDate: -1 });
 certificateSchema.index({ expiresAt: 1 });
-certificateSchema.index({ certificateNumber: 1 });
 
 // Compound indexes
 certificateSchema.index({ userId: 1, courseId: 1 }, { unique: true });

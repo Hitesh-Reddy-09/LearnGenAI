@@ -6,12 +6,15 @@ import { useTheme } from '../contexts/ThemeContext';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import ProgressBar from '../components/ui/ProgressBar';
+import { aiAPI } from '../services/api';
 
 const Generate = () => {
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState('');
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState('');
   const navigate = useNavigate();
   const { colors } = useTheme();
 
@@ -34,23 +37,29 @@ const Generate = () => {
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
-
     setIsGenerating(true);
     setProgress(0);
+    setError('');
+    setResult(null);
 
-    // Simulate course generation with realistic steps
+    // Simulate progress bar and steps
     for (let i = 0; i < steps.length; i++) {
       setCurrentStep(steps[i]);
       for (let j = 0; j <= 20; j++) {
         setProgress((i * 20) + j);
-        await new Promise(resolve => setTimeout(resolve, 80));
+        await new Promise(resolve => setTimeout(resolve, 60));
       }
     }
 
-    // Navigate to generated course
-    setTimeout(() => {
-      navigate('/course/react-hooks-mastery');
-    }, 500);
+    // Call backend API
+    try {
+      const data = await aiAPI.generateCourse(prompt);
+      setResult(data.data || data.result || data);
+      navigate('/course', { state: { course: data.data || data.result || data } });
+    } catch (err) {
+      setError(err?.response?.data?.message || err.message || 'Failed to generate course.');
+    }
+    setIsGenerating(false);
   };
 
   return (
@@ -116,6 +125,19 @@ const Generate = () => {
               <Sparkles className="w-5 h-5 mr-2" />
               {isGenerating ? 'Generating Your Course...' : 'Generate Course'}
             </Button>
+
+            {error && (
+              <div className="mt-4 text-red-600 dark:text-red-400 text-center">{error}</div>
+            )}
+
+            {result && (
+              <div className="mt-8">
+                <h3 className="text-xl font-semibold dark:text-white text-gray-900 mb-4">Generated Course</h3>
+                <pre className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 text-sm overflow-x-auto text-left">
+                  {JSON.stringify(result, null, 2)}
+                </pre>
+              </div>
+            )}
           </Card>
 
           {!isGenerating && (

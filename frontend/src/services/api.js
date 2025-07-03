@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Create axios instance with base configuration
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5002/api',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5051/api',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -242,6 +242,13 @@ export const apiUtils = {
     localStorage.setItem('token', token);
     localStorage.setItem('refreshToken', refreshToken);
     localStorage.setItem('user', JSON.stringify(user));
+  }
+};
+
+export const youtubeAPI = {
+  search: async (query, maxResults = 1, educationalOnly = true) => {
+    const response = await api.post('/youtube/search', { query, maxResults, educationalOnly });
+    return response.data;
   }
 };
 

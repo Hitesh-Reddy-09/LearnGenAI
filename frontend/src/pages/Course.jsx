@@ -1,22 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { useParams } from 'react-router-dom';
+import { useParams, useLocation } from 'react-router-dom';
 import ReactPlayer from 'react-player';
 import { Play, CheckCircle, Circle, ChevronLeft, ChevronRight, Volume2, Maximize, MoreHorizontal, BookOpen } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
+import { youtubeAPI } from '../services/api';
 
 const Course = () => {
   const { id } = useParams();
-  const [currentLesson, setCurrentLesson] = useState(0);
-  const [completedLessons, setCompletedLessons] = useState([]);
-  const [showQuiz, setShowQuiz] = useState(false);
-  const [videoEnded, setVideoEnded] = useState(false);
-  const { colors } = useTheme();
-
-  // Mock course data with quizzes after each video
-  const courseData = {
+  const location = useLocation();
+  // Use course data from navigation state, fallback to mock if not present
+  const courseData = location.state?.course || {
     title: "Complete React Hooks & State Management",
     progress: 0,
     lessons: [
@@ -174,6 +170,22 @@ const Course = () => {
     ],
   };
 
+  // Extract videoResources from courseData if present
+  const videoResources = courseData.videoResources;
+
+  // Helper to get recommended videos for a lesson
+  const getLessonVideos = (lessonTitle) => {
+    if (!videoResources || !videoResources.lessonVideos) return [];
+    const lessonObj = videoResources.lessonVideos.find(lv => lv.lessonTitle === lessonTitle);
+    return lessonObj ? lessonObj.recommendedVideos : [];
+  };
+
+  const [currentLesson, setCurrentLesson] = useState(0);
+  const [completedLessons, setCompletedLessons] = useState([]);
+  const [showQuiz, setShowQuiz] = useState(false);
+  const [videoEnded, setVideoEnded] = useState(false);
+  const { colors } = useTheme();
+
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [quizCompleted, setQuizCompleted] = useState(false);
@@ -271,10 +283,11 @@ const Course = () => {
             <div className="space-y-2">
               {courseData.lessons.map((lesson, index) => (
                 <motion.button
-                  key={lesson.id}
+                  key={lesson.id || index}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => {
+                    if (index > 0 && !completedLessons.includes(index - 1)) return; // Prevent skipping ahead
                     setCurrentLesson(index);
                     setVideoEnded(false);
                     resetQuiz();
@@ -283,7 +296,8 @@ const Course = () => {
                     currentLesson === index
                       ? 'dark:bg-white/20 bg-gray-200 dark:border-white/30 border-gray-400 border'
                       : 'dark:bg-white/5 bg-white/70 dark:hover:bg-white/10 hover:bg-gray-100 border-transparent border'
-                  }`}
+                  } ${index > 0 && !completedLessons.includes(index - 1) ? 'opacity-50 pointer-events-none' : ''}`}
+                  disabled={index > 0 && !completedLessons.includes(index - 1)}
                 >
                   <div className="flex items-center">
                     <div className="flex-shrink-0 mr-3">
@@ -325,139 +339,63 @@ const Course = () => {
         </div>
 
         {/* Main Content Area */}
-        <div className="flex-1 flex flex-col">
-          {/* Video Header */}
-          <div className="p-6 dark:border-white/10 border-gray-200 border-b bg-gradient-to-r dark:from-gray-900/50 dark:to-black/50 from-white/80 to-gray-100/80 backdrop-blur-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold dark:text-white text-gray-900 mb-2">
-                  {currentLessonData.title}
-                </h2>
-                <p className="dark:text-gray-400 text-gray-600">
-                  {currentLessonData.description}
-                </p>
-                {currentLessonData.hasQuiz && (
-                  <div className="flex items-center mt-2 text-sm dark:text-white text-gray-900">
-                    <BookOpen className="w-4 h-4 mr-2" />
-                    <span>Quiz available after video</span>
+        <div className="flex-1 flex flex-col overflow-y-auto">
+          <div className="p-6">
+            <h1 className="text-3xl font-bold mb-4">{courseData.title}</h1>
+            {courseData.description && <p className="mb-6">{courseData.description}</p>}
+            {/* Only show the current lesson in the main content area */}
+            {courseData.lessons && (
+              <Card className="mb-6 p-4">
+                <h2 className="text-xl font-semibold mb-2">{currentLessonData.title}</h2>
+                {currentLessonData.description && <p className="mb-2">{currentLessonData.description}</p>}
+                {currentLessonData.videoUrl && (
+                  <div className="mb-4">
+                    <ReactPlayer url={currentLessonData.videoUrl} controls width="100%" />
                   </div>
                 )}
-              </div>
-              <div className="flex items-center space-x-2">
-                <button 
-                  onClick={() => {
-                    const newIndex = Math.max(0, currentLesson - 1);
-                    setCurrentLesson(newIndex);
-                    setVideoEnded(false);
-                    resetQuiz();
-                  }}
-                  disabled={currentLesson === 0}
-                  className="p-2 rounded-lg dark:bg-white/10 bg-gray-200 dark:hover:bg-white/20 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <ChevronLeft className="w-5 h-5 dark:text-white text-gray-900" />
-                </button>
-                <button 
-                  onClick={() => {
-                    const newIndex = Math.min(courseData.lessons.length - 1, currentLesson + 1);
-                    setCurrentLesson(newIndex);
-                    setVideoEnded(false);
-                    resetQuiz();
-                  }}
-                  disabled={currentLesson === courseData.lessons.length - 1}
-                  className="p-2 rounded-lg dark:bg-white/10 bg-gray-200 dark:hover:bg-white/20 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <ChevronRight className="w-5 h-5 dark:text-white text-gray-900" />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Video Player Area */}
-          <div className="flex-1 p-6">
-            <div className="h-full bg-black rounded-2xl overflow-hidden relative">
-              <ReactPlayer
-                url={currentLessonData.videoUrl}
-                width="100%"
-                height="100%"
-                controls={false}
-                playing={false}
-                onEnded={handleVideoEnd}
-              />
-              
-              {/* Video End Overlay */}
-              {videoEnded && currentLessonData.hasQuiz && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center"
-                >
-                  <Card className="p-8 max-w-md text-center">
-                    <div className="w-16 h-16 dark:bg-white/20 bg-gray-300 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <BookOpen className="w-8 h-8 dark:text-white text-gray-900" />
+                {/* YouTube Recommendations from backend for current lesson only */}
+                {getLessonVideos(currentLessonData.title).length > 0 && (
+                  <div className="mb-4">
+                    <h4 className="font-semibold mb-2">Recommended YouTube Videos</h4>
+                    <div className="flex justify-center">
+                      {getLessonVideos(currentLessonData.title).map(video => (
+                        <div key={video.id} className="w-full max-w-2xl bg-white dark:bg-gray-900 rounded-lg shadow-md overflow-hidden mb-4">
+                          <div className="relative" style={{ paddingTop: '56.25%' }}>
+                            <ReactPlayer
+                              url={video.embedUrl}
+                              controls
+                              width="100%"
+                              height="100%"
+                              style={{ position: 'absolute', top: 0, left: 0 }}
+                            />
+                          </div>
+                          <div className="p-2">
+                            <div className="font-medium">{video.title}</div>
+                            <div className="text-xs text-gray-600">{video.channelTitle}</div>
+                            <div className="text-xs text-gray-500">{video.duration} • {video.viewCount}</div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <h3 className="text-xl font-bold dark:text-white text-gray-900 mb-2">
-                      Video Complete!
-                    </h3>
-                    <p className="dark:text-gray-400 text-gray-600 mb-6">
-                      Ready to test your knowledge with a quick quiz?
-                    </p>
-                    <Button onClick={() => setShowQuiz(true)} size="lg">
-                      Start Quiz
-                    </Button>
-                  </Card>
-                </motion.div>
-              )}
-              
-              {/* Custom Video Controls */}
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
-                    <button className="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors">
-                      <Play className="w-5 h-5 text-white" />
-                    </button>
-                    <span className="text-white font-medium">0:00</span>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <button className="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors">
-                      <Volume2 className="w-5 h-5 text-white" />
-                    </button>
-                    <button className="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors">
-                      <Maximize className="w-5 h-5 text-white" />
-                    </button>
-                    <button className="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors">
-                      <MoreHorizontal className="w-5 h-5 text-white" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom Action Bar */}
-          <div className="p-6 dark:border-white/10 border-gray-200 border-t bg-gradient-to-r dark:from-gray-900/50 dark:to-black/50 from-white/80 to-gray-100/80 backdrop-blur-sm">
-            <div className="flex items-center justify-between">
-              <div className="text-sm dark:text-gray-400 text-gray-600">
-                Lesson {currentLesson + 1} of {courseData.lessons.length}
-              </div>
-              <div className="flex items-center space-x-4">
-                {currentLessonData.hasQuiz && (
-                  <Button 
-                    onClick={() => setShowQuiz(true)}
-                    variant="secondary"
-                    className="flex items-center"
-                  >
-                    <BookOpen className="w-4 h-4 mr-2" />
-                    Take Quiz
-                  </Button>
                 )}
-                <Button 
-                  onClick={() => handleLessonComplete(currentLesson)}
-                  disabled={!videoEnded && currentLessonData.hasQuiz}
-                >
-                  Mark as Complete
-                </Button>
-              </div>
-            </div>
+                {currentLessonData.quizQuestions && currentLessonData.quizQuestions.length > 0 && (
+                  <div className="mt-4">
+                    <h3 className="font-semibold">Quiz</h3>
+                    {currentLessonData.quizQuestions.map((q, qi) => (
+                      <div key={qi} className="mb-2">
+                        <p>{q.question}</p>
+                        <ul className="list-disc ml-6">
+                          {q.options.map((opt, oi) => (
+                            <li key={oi}>{opt}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            )}
           </div>
         </div>
       </div>

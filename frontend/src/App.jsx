@@ -41,6 +41,14 @@ function AppContent() {
             } 
           />
           <Route 
+            path="/course" 
+            element={
+              <ProtectedRoute>
+                <Course />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
             path="/course/:id" 
             element={
               <ProtectedRoute>

@@ -1,0 +1,406 @@
+{
+  "info": {
+    "name": "LearnGen AI API Tests",
+    "description": "Complete test collection for LearnGen AI endpoints with authentication",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{authToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5002",
+      "type": "string"
+    },
+    {
+      "key": "authToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "🔐 Authentication Setup",
+      "item": [
+        {
+          "name": "1. Register User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test User\",\n  \"email\": \"test@example.com\",\n  \"password\": \"TestPassword123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "register"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has success message\", function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.true;",
+                  "    pm.expect(response.message).to.include(\"User registered successfully\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Login User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"TestPassword123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has token\", function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.true;",
+                  "    pm.expect(response.token).to.exist;",
+                  "    ",
+                  "    // Store token for other requests",
+                  "    pm.collectionVariables.set(\"authToken\", response.token);",
+                  "    console.log(\"Token stored:\", response.token);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🤖 AI Endpoints",
+      "item": [
+        {
+          "name": "Generate Course",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"Introduction to Artificial Intelligence\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/ai/generate-course",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ai", "generate-course"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has course structure\", function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.true;",
+                  "    pm.expect(response.data).to.have.property('title');",
+                  "    pm.expect(response.data).to.have.property('description');",
+                  "    pm.expect(response.data).to.have.property('difficulty');",
+                  "    pm.expect(response.data).to.have.property('lessons');",
+                  "    pm.expect(response.data.lessons).to.be.an('array');",
+                  "    pm.expect(response.data.lessons.length).to.be.at.least(4);",
+                  "});",
+                  "",
+                  "pm.test(\"Each lesson has required fields\", function () {",
+                  "    const response = pm.response.json();",
+                  "    response.data.lessons.forEach((lesson, index) => {",
+                  "        pm.expect(lesson).to.have.property('title');",
+                  "        pm.expect(lesson).to.have.property('description');",
+                  "        pm.expect(lesson).to.have.property('objectives');",
+                  "        pm.expect(lesson).to.have.property('searchKeywords');",
+                  "        pm.expect(lesson.objectives).to.be.an('array');",
+                  "        pm.expect(lesson.searchKeywords).to.be.an('array');",
+                  "    });",
+                  "});",
+                  "",
+                  "// Store course data for other tests",
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set(\"courseData\", JSON.stringify(response.data));",
+                  "    pm.collectionVariables.set(\"lessonTitle\", response.data.lessons[0].title);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Generate Quiz",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lessonContent\": \"Artificial Intelligence (AI) is a branch of computer science that aims to create intelligent machines that work and react like humans. Some of the activities computers with artificial intelligence are designed for include speech recognition, learning, planning, and problem solving.\",\n  \"lessonTitle\": \"Introduction to AI\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/ai/generate-quiz",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ai", "generate-quiz"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has quiz structure\", function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.true;",
+                  "    pm.expect(response.data).to.have.property('questions');",
+                  "    pm.expect(response.data.questions).to.be.an('array');",
+                  "    pm.expect(response.data.questions.length).to.be.at.least(4);",
+                  "});",
+                  "",
+                  "pm.test(\"Each question has required fields\", function () {",
+                  "    const response = pm.response.json();",
+                  "    response.data.questions.forEach((question, index) => {",
+                  "        pm.expect(question).to.have.property('type');",
+                  "        pm.expect(question).to.have.property('question');",
+                  "        pm.expect(question).to.have.property('answer');",
+                  "        pm.expect(['MCQ', 'True/False', 'Short Answer']).to.include(question.type);",
+                  "        ",
+                  "        if (question.type === 'MCQ') {",
+                  "            pm.expect(question).to.have.property('options');",
+                  "            pm.expect(question.options).to.be.an('array');",
+                  "        }",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Generate Final Test",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"courseData\": {\n    \"title\": \"Introduction to Artificial Intelligence\",\n    \"description\": \"Learn the fundamentals of AI\",\n    \"difficulty\": \"intermediate\",\n    \"lessons\": [\n      {\n        \"title\": \"What is AI?\",\n        \"description\": \"Introduction to artificial intelligence\",\n        \"objectives\": [\"Understand AI basics\"],\n        \"searchKeywords\": [\"ai\", \"artificial intelligence\"]\n      },\n      {\n        \"title\": \"Machine Learning\",\n        \"description\": \"Introduction to machine learning\",\n        \"objectives\": [\"Understand ML basics\"],\n        \"searchKeywords\": [\"machine learning\", \"ml\"]\n      }\n    ]\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/ai/generate-final-test",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ai", "generate-final-test"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has test structure\", function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.true;",
+                  "    pm.expect(response.data).to.have.property('questions');",
+                  "    pm.expect(response.data.questions).to.be.an('array');",
+                  "    pm.expect(response.data.questions.length).to.be.at.least(10);",
+                  "});",
+                  "",
+                  "pm.test(\"Each question has required fields\", function () {",
+                  "    const response = pm.response.json();",
+                  "    response.data.questions.forEach((question, index) => {",
+                  "        pm.expect(question).to.have.property('type');",
+                  "        pm.expect(question).to.have.property('question');",
+                  "        pm.expect(question).to.have.property('answer');",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Evaluate Short Answer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"What is Artificial Intelligence?\",\n  \"userAnswer\": \"Artificial Intelligence is a technology that enables computers to perform tasks that typically require human intelligence, such as learning, reasoning, and problem-solving.\",\n  \"keywords\": [\"artificial intelligence\", \"computers\", \"human intelligence\", \"learning\", \"reasoning\", \"problem-solving\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/ai/evaluate-short-answer",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ai", "evaluate-short-answer"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has evaluation structure\", function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.success).to.be.true;",
+                  "    pm.expect(response.data).to.have.property('score');",
+                  "    pm.expect(response.data).to.have.property('feedback');",
+                  "    pm.expect(response.data).to.have.property('suggestions');",
+                  "    pm.expect(response.data.score).to.be.a('number');",
+                  "    pm.expect(response.data.score).to.be.at.least(0);",
+                  "    pm.expect(response.data.score).to.be.at.most(1);",
+                  "    pm.expect(response.data.feedback).to.be.a('string');",
+                  "    pm.expect(response.data.suggestions).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🔍 Alternative Test Cases",
+      "item": [
+        {
+          "name": "Generate Course - JavaScript",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"JavaScript Fundamentals for Beginners\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/ai/generate-course",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ai", "generate-course"]
+            }
+          }
+        },
+        {
+          "name": "Generate Course - Python",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"Python Programming for Data Science\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/ai/generate-course",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ai", "generate-course"]
+            }
+          }
+        },
+        {
+          "name": "Generate Quiz - Machine Learning",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lessonContent\": \"Machine Learning is a subset of artificial intelligence that enables computers to learn and improve from experience without being explicitly programmed. It uses algorithms to identify patterns in data and make predictions or decisions.\",\n  \"lessonTitle\": \"Introduction to Machine Learning\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/ai/generate-quiz",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ai", "generate-quiz"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+} 
