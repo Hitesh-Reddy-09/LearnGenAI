@@ -5,6 +5,7 @@ const { JWT_SECRET, JWT_EXPIRES_IN, MESSAGES, STATUS_CODES } = require('../utils
 const logger = require('../utils/logger');
 const { AppError, asyncHandler } = require('../middleware/errorHandler');
 const { sendEmail } = require('../utils/email');
+const mongoose = require('mongoose');
 
 // Generate JWT token
 const generateToken = (userId) => {
@@ -413,6 +414,103 @@ const getUserStats = asyncHandler(async (req, res, next) => {
   });
 });
 
+// @desc    Update course progress/completion
+// @route   POST /api/auth/progress
+// @access  Private
+const updateCourseProgress = asyncHandler(async (req, res, next) => {
+  const { courseId, progress, completedLessonIds, completed } = req.body;
+  const user = await User.findById(req.user.id);
+  if (!user) return next(new AppError('User not found', 404));
+
+  // Ensure courseId is an ObjectId
+  const courseObjectId = mongoose.Types.ObjectId(courseId);
+
+  // Add to coursesEnrolled if not already
+  if (!user.coursesEnrolled.map(id => id.toString()).includes(courseObjectId.toString())) {
+    user.coursesEnrolled.push(courseObjectId);
+    console.log('[updateCourseProgress] Added course to coursesEnrolled:', { userId: user._id, courseId, coursesEnrolled: user.coursesEnrolled });
+  } else {
+    console.log('[updateCourseProgress] Course already in coursesEnrolled:', { userId: user._id, courseId, coursesEnrolled: user.coursesEnrolled });
+  }
+  // Add to coursesCompleted if completed
+  if (completed && !user.coursesCompleted.map(id => id.toString()).includes(courseObjectId.toString())) {
+    user.coursesCompleted.push(courseObjectId);
+    console.log('[updateCourseProgress] Added course to coursesCompleted:', { userId: user._id, courseId, coursesCompleted: user.coursesCompleted });
+  }
+  await user.save();
+  console.log('[updateCourseProgress] User saved:', { userId: user._id, coursesEnrolled: user.coursesEnrolled });
+
+  // Update Course.enrolledUsers progress
+  const Course = require('../models/Course');
+  const course = await Course.findById(courseId);
+  if (course) {
+    const enrolled = course.enrolledUsers.find(e => e.user.toString() === user._id.toString());
+    if (enrolled) {
+      if (typeof progress === 'number') enrolled.progress = progress;
+      if (Array.isArray(completedLessonIds)) enrolled.completedLessons = completedLessonIds;
+      enrolled.lastAccessed = new Date();
+    } else {
+      course.enrolledUsers.push({
+        user: user._id,
+        progress: progress || 0,
+        completedLessons: completedLessonIds || [],
+        lastAccessed: new Date()
+      });
+    }
+    // Add to completedUsers if completed
+    if (completed && !course.completedUsers.includes(user._id)) {
+      course.completedUsers.push(user._id);
+    }
+    await course.save();
+  }
+
+  res.status(200).json({ success: true });
+});
+
+// @desc    Get user course history
+// @route   GET /api/auth/history
+// @access  Private
+const getCourseHistory = asyncHandler(async (req, res, next) => {
+  const user = await User.findById(req.user.id)
+    .populate({
+      path: 'coursesEnrolled',
+      select: 'title thumbnail estimatedDuration category',
+    })
+    .populate({
+      path: 'coursesCompleted',
+      select: 'title thumbnail estimatedDuration category',
+    });
+  if (!user) return next(new AppError('User not found', 404));
+
+  // Get progress for each enrolled course, skip if course is missing
+  const Course = require('../models/Course');
+  const enrolledProgress = await Promise.all(
+    user.coursesEnrolled.map(async course => {
+      try {
+        const c = await Course.findById(course._id);
+        if (!c) return null; // skip missing courses
+        const enrolled = c.enrolledUsers.find(e => e.user.toString() === user._id.toString());
+        return {
+          ...course.toObject(),
+          progress: enrolled ? enrolled.progress : 0,
+          completedLessons: enrolled ? enrolled.completedLessons : [],
+          lastAccessed: enrolled ? enrolled.lastAccessed : null
+        };
+      } catch (err) {
+        return null; // skip on error
+      }
+    })
+  );
+
+  res.status(200).json({
+    success: true,
+    data: {
+      enrolled: enrolledProgress.filter(Boolean),
+      completed: user.coursesCompleted
+    }
+  });
+});
+
 module.exports = {
   register,
   login,
@@ -425,5 +523,7 @@ module.exports = {
   verifyEmail,
   resendVerification,
   refreshToken,
-  getUserStats
+  getUserStats,
+  updateCourseProgress,
+  getCourseHistory
 }; 

@@ -108,13 +108,13 @@ Return only valid JSON.`;
  * Generate a quiz for a lesson
  * @param {string} lessonContent - The lesson content
  * @param {string} lessonTitle - The lesson title
- * @returns {Promise<object>} - { questions: [ { type, question, options, answer } ] }
+ * @returns {Promise<object>} - { questions: [ { type, question, options, correct } ] }
  * @example
  * const quiz = await geminiService.generateQuiz('Lesson content...', 'Lesson Title');
  */
 async function generateQuiz(lessonContent, lessonTitle) {
   try {
-    const aiPrompt = `Generate a JSON array of 4-6 quiz questions for the lesson titled "${lessonTitle}". Use the following lesson content:\n"""\n${lessonContent}\n"""\nEach question should be one of: MCQ, True/False, or Short Answer. For each question, include:\n- type ("MCQ", "True/False", "Short Answer")\n- question\n- options (array, for MCQ)\n- answer (correct answer)\nReturn only valid JSON.`;
+    const aiPrompt = `Generate a JSON array of 4-6 quiz questions for the lesson titled "${lessonTitle}". Use the following lesson content:\n"""\n${lessonContent}\n"""\nEach question should be one of: MCQ (multiple choice, 4 options) or True/False. For each question, include:\n- type ("MCQ" or "True/False")\n- question\n- options (array, for MCQ: 4 options; for True/False: ["True", "False"])\n- correct (the index of the correct option: 0-based for MCQ, 0 for "True", 1 for "False" in True/False)\nDo NOT include any short answer or open-ended questions. Return only valid JSON.`;
     const model = genAI.getGenerativeModel({ model: MODEL_NAME });
     const response = await model.generateContent(aiPrompt);
     // Debug: log the raw response
@@ -130,7 +130,7 @@ async function generateQuiz(lessonContent, lessonTitle) {
         ...q,
         question: sanitizeContent(q.question),
         options: q.options ? q.options.map(sanitizeContent) : undefined,
-        answer: sanitizeContent(q.answer)
+        correct: typeof q.correct === 'number' ? q.correct : (typeof q.answer === 'number' ? q.answer : undefined)
       }))
     };
   } catch (err) {

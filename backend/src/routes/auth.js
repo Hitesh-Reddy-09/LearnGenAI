@@ -12,7 +12,9 @@ const {
   verifyEmail,
   resendVerification,
   refreshToken,
-  getUserStats
+  getUserStats,
+  updateCourseProgress,
+  getCourseHistory
 } = require('../controllers/authController');
 
 const {
@@ -87,6 +89,8 @@ router.put('/me', verifyToken, validate(updateProfileSchema), updateProfile);
 router.put('/change-password', verifyToken, validate(changePasswordSchema), changePassword);
 router.post('/resend-verification', verifyToken, resendVerification);
 router.get('/stats', verifyToken, getUserStats);
+router.post('/progress', verifyToken, updateCourseProgress);
+router.get('/history', verifyToken, getCourseHistory);
 
 // Admin routes (stubs)
 router.get('/users', verifyToken, requireRole(['admin']), (req, res) => {

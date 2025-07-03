@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { BookOpen, Clock, Trophy, TrendingUp, Play, Star, Users, Award } from 'lucide-react';
@@ -11,6 +11,26 @@ import ProgressBar from '../components/ui/ProgressBar';
 const Dashboard = () => {
   const { colors } = useTheme();
   const { user, isAuthenticated } = useAuth();
+  const [courseHistory, setCourseHistory] = useState({ enrolled: [], completed: [] });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        const res = await fetch('/api/auth/history', {
+          headers: { Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : undefined }
+        });
+        const data = await res.json();
+        console.log('Dashboard: /api/auth/history response:', data);
+        if (data.success) setCourseHistory(data.data);
+        else console.error('Dashboard: /api/auth/history error:', data);
+      } catch (err) {
+        console.error('Dashboard: /api/auth/history fetch error:', err);
+      }
+      setLoading(false);
+    };
+    fetchHistory();
+  }, []);
 
   // Redirect to home if not authenticated
   if (!isAuthenticated) {
@@ -35,64 +55,35 @@ const Dashboard = () => {
     );
   }
   
+  // Stats
   const stats = [
     {
       icon: BookOpen,
       label: 'Courses Completed',
-      value: user.stats?.coursesCompleted || 0,
-      change: '+3 this month',
+      value: courseHistory.completed.length,
+      change: '',
       color: 'dark:bg-white bg-gray-900',
     },
     {
       icon: Clock,
       label: 'Hours Learned',
-      value: user.stats?.hoursLearned || 0,
-      change: '+12 this week',
+      value: user.totalLearningHours || 0,
+      change: '',
       color: 'dark:bg-white bg-gray-900',
     },
     {
       icon: Trophy,
       label: 'Certificates Earned',
-      value: user.stats?.certificatesEarned || 0,
-      change: '+2 this month',
+      value: user.certificates?.length || 0,
+      change: '',
       color: 'dark:bg-white bg-gray-900',
     },
     {
       icon: TrendingUp,
       label: 'Learning Streak',
-      value: user.stats?.learningStreak || 0,
+      value: user.streak || 0,
       change: 'days in a row',
       color: 'dark:bg-white bg-gray-900',
-    },
-  ];
-
-  const recentCourses = [
-    {
-      id: 1,
-      title: 'React Hooks & State Management',
-      instructor: 'AI Learning Assistant',
-      progress: 75,
-      thumbnail: 'https://images.pexels.com/photos/11035380/pexels-photo-11035380.jpeg?auto=compress&cs=tinysrgb&w=300&h=200&fit=crop',
-      duration: '4.5 hours',
-      rating: 4.9,
-    },
-    {
-      id: 2,
-      title: 'Python Data Structures & Algorithms',
-      instructor: 'AI Learning Assistant',
-      progress: 45,
-      thumbnail: 'https://images.pexels.com/photos/1181671/pexels-photo-1181671.jpeg?auto=compress&cs=tinysrgb&w=300&h=200&fit=crop',
-      duration: '6.2 hours',
-      rating: 4.8,
-    },
-    {
-      id: 3,
-      title: 'Machine Learning Fundamentals',
-      instructor: 'AI Learning Assistant',
-      progress: 20,
-      thumbnail: 'https://images.pexels.com/photos/8386440/pexels-photo-8386440.jpeg?auto=compress&cs=tinysrgb&w=300&h=200&fit=crop',
-      duration: '8.1 hours',
-      rating: 4.9,
     },
   ];
 
@@ -186,67 +177,59 @@ const Dashboard = () => {
                   </Button>
                 </Link>
               </div>
-
               <div className="space-y-6">
-                {recentCourses.map((course, index) => (
-                  <motion.div
-                    key={course.id}
-                    initial={{ y: 30, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 0.3 + index * 0.1 }}
-                  >
-                    <Card hover className="p-6">
-                      <div className="flex flex-col md:flex-row gap-6">
-                        <div className="relative">
-                          <img
-                            src={course.thumbnail}
-                            alt={course.title}
-                            className="w-full md:w-48 h-32 object-cover rounded-lg"
-                          />
-                          <div className="absolute inset-0 bg-black/40 rounded-lg flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                            <Play className="w-8 h-8 text-white" />
+                {loading ? <div>Loading...</div> :
+                  courseHistory.enrolled.length === 0 ? <div>No enrolled courses yet.</div> :
+                  courseHistory.enrolled.map((course, index) => (
+                    <motion.div
+                      key={course._id}
+                      initial={{ y: 30, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      transition={{ delay: 0.3 + index * 0.1 }}
+                    >
+                      <Card hover className="p-6">
+                        <div className="flex flex-col md:flex-row gap-6">
+                          <div className="relative">
+                            <img src={course.thumbnail} alt={course.title} className="w-40 h-28 object-cover rounded-xl" />
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="text-xl font-bold dark:text-white text-gray-900 mb-2">{course.title}</h3>
+                            <div className="flex items-center text-sm mb-2">
+                              <span className="mr-4">{course.category}</span>
+                              <span>{course.estimatedDuration} min</span>
+                            </div>
+                            <ProgressBar progress={course.progress || 0} showPercentage size="sm" className="mb-2" />
+                            <div className="flex items-center gap-2">
+                              <Button as={Link} to={`/course/${course._id}`} size="sm">Resume</Button>
+                              {course.progress === 100 && <span className="text-green-600 font-semibold ml-2">Completed</span>}
+                            </div>
                           </div>
                         </div>
-                        
-                        <div className="flex-1">
-                          <div className="flex items-start justify-between mb-3">
-                            <div>
-                              <h3 className="text-xl font-semibold dark:text-white text-gray-900 mb-1">
-                                {course.title}
-                              </h3>
-                              <p className="dark:text-gray-400 text-gray-600">{course.instructor}</p>
-                            </div>
-                            <div className="flex items-center dark:text-white text-gray-900">
-                              <Star className="w-4 h-4 fill-current mr-1" />
-                              <span className="text-sm">{course.rating}</span>
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center text-sm dark:text-gray-400 text-gray-600 mb-4">
-                            <Clock className="w-4 h-4 mr-2" />
-                            {course.duration}
-                          </div>
-                          
-                          <div className="mb-4">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-sm dark:text-gray-400 text-gray-600">Progress</span>
-                              <span className="text-sm dark:text-white text-gray-900">{course.progress}% complete</span>
-                            </div>
-                            <ProgressBar progress={course.progress} />
-                          </div>
-                          
-                          <Link to={`/course/${course.id}`}>
-                            <Button size="sm">
-                              Continue Learning
-                            </Button>
-                          </Link>
-                        </div>
-                      </div>
-                    </Card>
-                  </motion.div>
-                ))}
+                      </Card>
+                    </motion.div>
+                  ))}
               </div>
             </motion.div>
+          </div>
+
+          {/* Completed Courses */}
+          <div>
+            <Card className="p-6">
+              <h2 className="text-xl font-bold mb-4 dark:text-white text-gray-900">Completed Courses</h2>
+              {loading ? <div>Loading...</div> :
+                courseHistory.completed.length === 0 ? <div>No completed courses yet.</div> :
+                courseHistory.completed.map(course => (
+                  <div key={course._id} className="mb-4">
+                    <div className="flex items-center gap-3">
+                      <img src={course.thumbnail} alt={course.title} className="w-16 h-12 object-cover rounded-lg" />
+                      <div>
+                        <div className="font-semibold dark:text-white text-gray-900">{course.title}</div>
+                        <div className="text-xs text-gray-500">{course.category} • {course.estimatedDuration} min</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </Card>
           </div>
 
           {/* Achievements */}

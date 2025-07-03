@@ -2,11 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useParams, useLocation } from 'react-router-dom';
 import ReactPlayer from 'react-player';
-import { Play, CheckCircle, Circle, ChevronLeft, ChevronRight, Volume2, Maximize, MoreHorizontal, BookOpen } from 'lucide-react';
+import { Play, CheckCircle, XCircle, Circle, ChevronLeft, ChevronRight, Volume2, Maximize, MoreHorizontal, BookOpen, Loader2 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import { youtubeAPI } from '../services/api';
+import axios from 'axios';
+import ProgressBar from '../components/ui/ProgressBar';
+import { useAuth } from '../contexts/AuthContext';
 
 const Course = () => {
   const { id } = useParams();
@@ -191,21 +194,122 @@ const Course = () => {
   const [quizCompleted, setQuizCompleted] = useState(false);
   const [quizScore, setQuizScore] = useState(0);
 
-  const handleVideoEnd = () => {
+  const [videoProgress, setVideoProgress] = useState(0);
+  const [quizLoading, setQuizLoading] = useState(false);
+  const [dynamicQuiz, setDynamicQuiz] = useState(null);
+  const [dynamicQuizScore, setDynamicQuizScore] = useState(0);
+  const [dynamicQuizCompleted, setDynamicQuizCompleted] = useState(false);
+
+  const { user } = useAuth();
+
+  // Track video progress
+  const handleVideoProgress = (state) => {
+    setVideoProgress(state.played * 100);
+  };
+
+  // Fetch quiz from backend after video ends
+  const handleVideoEnd = async () => {
     setVideoEnded(true);
-    const currentLessonData = courseData.lessons[currentLesson];
-    if (currentLessonData.hasQuiz) {
-      setTimeout(() => {
-        setShowQuiz(true);
-      }, 1000);
-    } else {
-      handleLessonComplete(currentLesson);
+    setQuizLoading(true);
+    setShowQuiz(true);
+    setDynamicQuiz(null);
+    setDynamicQuizScore(0);
+    setDynamicQuizCompleted(false);
+    try {
+      console.log('Generating quiz for:', currentLessonData.title, currentLessonData.description);
+      const res = await axios.post('http://localhost:5051/api/ai/generate-quiz', {
+        lessonContent: currentLessonData.description,
+        lessonTitle: currentLessonData.title
+      }, {
+        headers: { Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : undefined }
+      });
+      console.log('Quiz response:', res.data);
+      setDynamicQuiz(
+        (res.data.data.questions || [])
+          .filter(q => {
+            const t = (q.type || '').toLowerCase();
+            return t === 'mcq' || t === 'true/false';
+          })
+          .map(q => {
+            let options = q.options || q.choices || q.answers;
+            if (!options || options.length === 0) {
+              if ((q.type && q.type.toLowerCase() === 'true/false') ||
+                  (q.question && q.question.toLowerCase().includes('true or false'))) {
+                options = ['True', 'False'];
+              } else {
+                options = [];
+              }
+            }
+            return {
+              ...q,
+              options
+            };
+          })
+      );
+    } catch (err) {
+      console.error('Quiz API error:', err);
+      setDynamicQuiz([]);
+    } finally {
+      setQuizLoading(false);
     }
   };
 
-  const handleLessonComplete = (lessonIndex) => {
-    if (!completedLessons.includes(lessonIndex)) {
-      setCompletedLessons([...completedLessons, lessonIndex]);
+  // Handle dynamic quiz answer
+  const handleDynamicQuizAnswer = (answerIndex) => {
+    if (!dynamicQuiz || dynamicQuizCompleted || selectedAnswer !== null) return;
+    setSelectedAnswer(answerIndex);
+    const isCorrect = answerIndex === dynamicQuiz[currentQuestion].correct;
+    if (isCorrect) {
+      setDynamicQuizScore(prev => prev + 1);
+    }
+    // Do not auto-advance; wait for user to click 'Next Question' or 'See Results'
+  };
+
+  // After quiz completion, check score and auto-advance if >= 60%
+  useEffect(() => {
+    if (dynamicQuizCompleted && dynamicQuiz) {
+      const percent = (dynamicQuizScore / dynamicQuiz.length) * 100;
+      if (percent >= 60) {
+        handleLessonComplete(currentLesson);
+        setShowQuiz(false);
+        resetQuiz();
+        if (currentLesson < courseData.lessons.length - 1) {
+          setTimeout(() => {
+            setCurrentLesson(currentLesson + 1);
+          }, 1000);
+        }
+      }
+    }
+    // eslint-disable-next-line
+  }, [dynamicQuizCompleted]);
+
+  // Helper to get lesson ObjectId by index
+  const getLessonId = (idx) => {
+    if (!courseData.lessons || !courseData.lessons[idx]) return null;
+    return courseData.lessons[idx]._id || courseData.lessons[idx];
+  };
+
+  const handleLessonComplete = async (lessonIndex) => {
+    const lessonId = getLessonId(lessonIndex);
+    if (!lessonId) return;
+    if (!completedLessons.includes(lessonId)) {
+      const updatedCompleted = [...completedLessons, lessonId];
+      setCompletedLessons(updatedCompleted);
+      // Calculate progress percentage
+      const progress = Math.round((updatedCompleted.length / courseData.lessons.length) * 100);
+      const completed = updatedCompleted.length === courseData.lessons.length;
+      try {
+        await axios.post('/api/auth/progress', {
+          courseId: courseData._id,
+          progress,
+          completedLessonIds: updatedCompleted, // always ObjectIds
+          completed
+        }, {
+          headers: { Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : undefined }
+        });
+      } catch (err) {
+        // Optionally handle error
+      }
     }
     setVideoEnded(false);
   };
@@ -252,6 +356,75 @@ const Course = () => {
   const currentLessonData = courseData.lessons[currentLesson];
   const currentQuizQuestions = currentLessonData.quizQuestions || [];
 
+  useEffect(() => {
+    // If courseData._id is not present, save the course to backend
+    if (!courseData._id && user && user._id) {
+      (async () => {
+        try {
+          // Ensure all required fields are present
+          const payload = {
+            title: courseData.title || 'Untitled Course',
+            description: courseData.description || 'No description provided.',
+            prompt: courseData.prompt || courseData.description || 'N/A',
+            difficulty: courseData.difficulty || 'beginner',
+            estimatedDuration: courseData.estimatedDuration || 60,
+            category: courseData.category || 'General',
+            createdBy: user._id,
+            // Optionally include thumbnail, tags, etc.
+            thumbnail: courseData.thumbnail || '',
+            tags: courseData.tags || [],
+            lessons: (courseData.lessons || []).map(lesson => ({
+              title: lesson.title,
+              description: lesson.description,
+              objectives: lesson.objectives || [],
+              searchKeywords: lesson.searchKeywords || [],
+            })),
+          };
+          console.log('Course.jsx: /api/course payload:', payload);
+          const res = await axios.post('/api/course', payload, {
+            headers: { Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : undefined }
+          });
+          console.log('Course.jsx: /api/course response:', res.data);
+          if (res.data.success && res.data.data && res.data.data._id) {
+            // Fetch the full course from backend to get lesson ObjectIds
+            const courseRes = await axios.get(`/api/course/${res.data.data._id}`, {
+              headers: { Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : undefined }
+            });
+            if (courseRes.data.success && courseRes.data.data) {
+              Object.assign(courseData, courseRes.data.data);
+            } else {
+              courseData._id = res.data.data._id;
+            }
+          }
+        } catch (err) {
+          if (err.response) {
+            console.error('Course.jsx: /api/course error:', err.response.data);
+          } else {
+            console.error('Course.jsx: /api/course error:', err);
+          }
+        }
+      })();
+    }
+    // Always enroll the user (or update progress) when the course is loaded
+    if (courseData._id) {
+      (async () => {
+        try {
+          const enrollRes = await axios.post('/api/auth/progress', {
+            courseId: courseData._id,
+            progress: 0,
+            completedLessonIds: [],
+            completed: false
+          }, {
+            headers: { Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : undefined }
+          });
+          console.log('Course.jsx: /api/auth/progress response:', enrollRes.data);
+        } catch (err) {
+          console.error('Course.jsx: /api/auth/progress error:', err);
+        }
+      })();
+    }
+  }, [courseData._id, user]);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -281,13 +454,13 @@ const Course = () => {
 
             {/* Lessons List */}
             <div className="space-y-2">
-              {courseData.lessons.map((lesson, index) => (
+              {(courseData.lessons || []).map((lesson, index) => (
                 <motion.button
                   key={lesson.id || index}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => {
-                    if (index > 0 && !completedLessons.includes(index - 1)) return; // Prevent skipping ahead
+                    if (index > 0 && !completedLessons.includes(getLessonId(index - 1))) return; // Prevent skipping ahead
                     setCurrentLesson(index);
                     setVideoEnded(false);
                     resetQuiz();
@@ -296,12 +469,12 @@ const Course = () => {
                     currentLesson === index
                       ? 'dark:bg-white/20 bg-gray-200 dark:border-white/30 border-gray-400 border'
                       : 'dark:bg-white/5 bg-white/70 dark:hover:bg-white/10 hover:bg-gray-100 border-transparent border'
-                  } ${index > 0 && !completedLessons.includes(index - 1) ? 'opacity-50 pointer-events-none' : ''}`}
-                  disabled={index > 0 && !completedLessons.includes(index - 1)}
+                  } ${index > 0 && !completedLessons.includes(getLessonId(index - 1)) ? 'opacity-50 pointer-events-none' : ''}`}
+                  disabled={index > 0 && !completedLessons.includes(getLessonId(index - 1))}
                 >
                   <div className="flex items-center">
                     <div className="flex-shrink-0 mr-3">
-                      {completedLessons.includes(index) ? (
+                      {completedLessons.includes(getLessonId(index)) ? (
                         <div className="w-8 h-8 rounded-lg dark:bg-white/20 bg-gray-300 flex items-center justify-center">
                           <CheckCircle className="w-4 h-4 dark:text-white text-gray-900" />
                         </div>
@@ -350,15 +523,22 @@ const Course = () => {
                 {currentLessonData.description && <p className="mb-2">{currentLessonData.description}</p>}
                 {currentLessonData.videoUrl && (
                   <div className="mb-4">
-                    <ReactPlayer url={currentLessonData.videoUrl} controls width="100%" />
+                    <ReactPlayer
+                      url={currentLessonData.videoUrl}
+                      controls
+                      width="100%"
+                      onProgress={handleVideoProgress}
+                      onEnded={handleVideoEnd}
+                    />
+                    <div className="text-xs text-gray-500 mt-1">Watched: {videoProgress.toFixed(0)}%</div>
                   </div>
                 )}
                 {/* YouTube Recommendations from backend for current lesson only */}
-                {getLessonVideos(currentLessonData.title).length > 0 && (
+                {(getLessonVideos(currentLessonData.title) || []).length > 0 && (
                   <div className="mb-4">
                     <h4 className="font-semibold mb-2">Recommended YouTube Videos</h4>
                     <div className="flex justify-center">
-                      {getLessonVideos(currentLessonData.title).map(video => (
+                      {(getLessonVideos(currentLessonData.title) || []).map(video => (
                         <div key={video.id} className="w-full max-w-2xl bg-white dark:bg-gray-900 rounded-lg shadow-md overflow-hidden mb-4">
                           <div className="relative" style={{ paddingTop: '56.25%' }}>
                             <ReactPlayer
@@ -367,6 +547,7 @@ const Course = () => {
                               width="100%"
                               height="100%"
                               style={{ position: 'absolute', top: 0, left: 0 }}
+                              onEnded={handleVideoEnd}
                             />
                           </div>
                           <div className="p-2">
@@ -382,11 +563,11 @@ const Course = () => {
                 {currentLessonData.quizQuestions && currentLessonData.quizQuestions.length > 0 && (
                   <div className="mt-4">
                     <h3 className="font-semibold">Quiz</h3>
-                    {currentLessonData.quizQuestions.map((q, qi) => (
+                    {(currentLessonData.quizQuestions || []).map((q, qi) => (
                       <div key={qi} className="mb-2">
                         <p>{q.question}</p>
                         <ul className="list-disc ml-6">
-                          {q.options.map((opt, oi) => (
+                          {(q.options || []).map((opt, oi) => (
                             <li key={oi}>{opt}</li>
                           ))}
                         </ul>
@@ -400,105 +581,133 @@ const Course = () => {
         </div>
       </div>
 
-      {/* Quiz Modal */}
+      {/* Quiz Modal (AI-generated after video) */}
       {showQuiz && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
         >
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ type: 'spring', bounce: 0.3 }}
-            className="bg-gradient-to-br dark:from-white/20 dark:to-white/10 from-white/95 to-gray-100/95 backdrop-blur-xl dark:border-white/20 border-gray-300 border rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-          >
-            {!quizCompleted ? (
-              <>
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-2xl font-bold dark:text-white text-gray-900">
-                    Quiz: {currentLessonData.title}
-                  </h3>
-                  <button
-                    onClick={() => setShowQuiz(false)}
-                    className="p-2 rounded-lg dark:bg-white/10 bg-gray-200 dark:hover:bg-white/20 hover:bg-gray-300 transition-colors dark:text-white text-gray-900"
-                  >
-                    ✕
-                  </button>
-                </div>
+          <Card className="max-w-xl w-full p-8 relative">
+            {quizLoading ? (
+              <div className="flex flex-col items-center justify-center min-h-[200px]">
+                <Loader2 className="w-8 h-8 animate-spin mb-4 text-gray-500" />
+                <div className="text-lg font-semibold">Generating quiz...</div>
+              </div>
+            ) : dynamicQuiz && dynamicQuiz.length > 0 ? (
+              <div>
+                {/* Progress Bar */}
                 <div className="mb-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm dark:text-gray-400 text-gray-600">Progress</span>
-                    <span className="text-sm dark:text-white text-gray-900">
-                      {currentQuestion + 1} of {currentQuizQuestions.length}
-                    </span>
-                  </div>
-                  <div className="w-full dark:bg-white/20 bg-gray-300 rounded-full h-2">
-                    <div 
-                      className="dark:bg-white bg-gray-900 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${((currentQuestion + 1) / currentQuizQuestions.length) * 100}%` }}
-                    />
+                  <ProgressBar progress={((currentQuestion + (dynamicQuizCompleted ? 1 : 0)) / dynamicQuiz.length) * 100} showPercentage={false} size="md" />
+                  <div className="text-xs text-center mt-1 text-gray-500">
+                    Question {Math.min(currentQuestion + 1, dynamicQuiz.length)} of {dynamicQuiz.length}
                   </div>
                 </div>
-                <h4 className="text-lg dark:text-white text-gray-900 mb-6">
-                  {currentQuizQuestions[currentQuestion]?.question}
-                </h4>
-                <div className="space-y-3 mb-8">
-                  {currentQuizQuestions[currentQuestion]?.options.map((option, index) => (
-                    <motion.button
-                      key={index}
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => handleQuizAnswer(index)}
-                      disabled={selectedAnswer !== null}
-                      className={`w-full text-left p-4 rounded-lg transition-all ${
-                        selectedAnswer === index
-                          ? index === currentQuizQuestions[currentQuestion].correct
-                            ? 'bg-green-500/20 border border-green-500/50'
-                            : 'bg-red-500/20 border border-red-500/50'
-                          : selectedAnswer !== null && index === currentQuizQuestions[currentQuestion].correct
-                          ? 'bg-green-500/20 border border-green-500/50'
-                          : 'dark:bg-white/10 bg-gray-100 dark:hover:bg-white/20 hover:bg-gray-200 dark:border-white/20 border-gray-300 border'
-                      }`}
+                {/* Quiz Question */}
+                {!dynamicQuizCompleted ? (
+                  <div>
+                    <h3 className="font-bold text-lg mb-4 flex items-center">
+                      <span className="mr-2">Q{currentQuestion + 1}.</span> {dynamicQuiz[currentQuestion].question}
+                    </h3>
+                    <div className="grid gap-3 mb-4">
+                      {(dynamicQuiz[currentQuestion].options || []).map((opt, oi) => {
+                        let btnVariant = 'secondary';
+                        let btnClass = '';
+                        let icon = null;
+                        if (selectedAnswer !== null) {
+                          if (oi === dynamicQuiz[currentQuestion].correct) {
+                            btnVariant = 'primary';
+                            btnClass = 'border-2 border-green-500';
+                            icon = <CheckCircle className="w-5 h-5 text-green-600 ml-2" />;
+                          } else if (oi === selectedAnswer) {
+                            btnVariant = 'secondary';
+                            btnClass = 'border-2 border-red-500';
+                            icon = <XCircle className="w-5 h-5 text-red-600 ml-2" />;
+                          }
+                        } else if (oi === selectedAnswer) {
+                          btnVariant = 'primary';
+                        }
+                        return (
+                          <Button
+                            key={oi}
+                            onClick={() => handleDynamicQuizAnswer(oi)}
+                            variant={btnVariant}
+                            size="lg"
+                            disabled={selectedAnswer !== null || dynamicQuizCompleted}
+                            className={`w-full flex justify-between items-center text-left text-base ${btnClass}`}
+                          >
+                            <span>{opt}</span>
+                            {icon}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                    {selectedAnswer !== null && (
+                      <div className="flex justify-end mt-2">
+                        <Button
+                          onClick={() => {
+                            if (currentQuestion + 1 < dynamicQuiz.length) {
+                              setCurrentQuestion(currentQuestion + 1);
+                              setSelectedAnswer(null);
+                            } else {
+                              setDynamicQuizCompleted(true);
+                            }
+                          }}
+                          variant="primary"
+                          size="md"
+                        >
+                          {currentQuestion + 1 < dynamicQuiz.length ? 'Next Question' : 'See Results'}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center">
+                    <div className="mb-4">
+                      <ProgressBar progress={(dynamicQuizScore / dynamicQuiz.length) * 100} showPercentage={true} size="lg" />
+                    </div>
+                    <div className="flex items-center justify-center mb-2">
+                      {(dynamicQuizScore / dynamicQuiz.length) * 100 >= 60 ? (
+                        <CheckCircle className="w-8 h-8 text-green-600 mr-2" />
+                      ) : (
+                        <XCircle className="w-8 h-8 text-red-600 mr-2" />
+                      )}
+                      <span className="text-2xl font-bold">
+                        Score: {dynamicQuizScore} / {dynamicQuiz.length}
+                      </span>
+                    </div>
+                    {(dynamicQuizScore / dynamicQuiz.length) * 100 >= 60 ? (
+                      <div className="text-green-600 font-semibold mb-4">Congratulations! You passed and will move to the next lesson.</div>
+                    ) : (
+                      <div className="text-red-600 font-semibold mb-4">Score at least 60% to proceed. Please try again.</div>
+                    )}
+                    <Button
+                      onClick={() => {
+                        setShowQuiz(false);
+                        setDynamicQuizCompleted(false);
+                        setCurrentQuestion(0);
+                        setSelectedAnswer(null);
+                        if ((dynamicQuizScore / dynamicQuiz.length) * 100 >= 60) {
+                          handleLessonComplete(currentLesson);
+                        }
+                      }}
+                      variant="primary"
+                      size="lg"
+                      className="mt-2"
                     >
-                      <span className="dark:text-white text-gray-900">{option}</span>
-                    </motion.button>
-                  ))}
-                </div>
-              </>
+                      {((dynamicQuizScore / dynamicQuiz.length) * 100 >= 60) ? 'Continue' : 'Retry Quiz'}
+                    </Button>
+                  </div>
+                )}
+              </div>
             ) : (
-              <div className="text-center">
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: 'spring', bounce: 0.5 }}
-                  className="w-16 h-16 dark:bg-white bg-gray-900 rounded-full flex items-center justify-center mx-auto mb-6"
-                >
-                  <CheckCircle className="w-8 h-8 dark:text-black text-white" />
-                </motion.div>
-                <h3 className="text-2xl font-bold dark:text-white text-gray-900 mb-4">Quiz Completed!</h3>
-                <p className="dark:text-gray-300 text-gray-700 mb-2">
-                  You scored {quizScore} out of {currentQuizQuestions.length}
-                </p>
-                <p className="dark:text-white text-gray-900 mb-8">
-                  {quizScore === currentQuizQuestions.length ? 'Perfect score! 🎉' : 
-                   quizScore >= currentQuizQuestions.length * 0.7 ? 'Great job! 👏' : 
-                   'Keep practicing! 💪'}
-                </p>
-                <div className="flex justify-center space-x-4">
-                  <Button variant="secondary" onClick={() => {
-                    setShowQuiz(false);
-                    resetQuiz();
-                  }}>
-                    Retake Quiz
-                  </Button>
-                  <Button onClick={handleQuizComplete}>
-                    Continue Learning
-                  </Button>
-                </div>
+              <div className="flex flex-col items-center justify-center min-h-[200px]">
+                <XCircle className="w-8 h-8 text-red-500 mb-2" />
+                <div className="text-lg font-semibold">No quiz available for this lesson.</div>
+                <Button onClick={() => setShowQuiz(false)} variant="secondary" size="md" className="mt-4">Close</Button>
               </div>
             )}
-          </motion.div>
+          </Card>
         </motion.div>
       )}
     </motion.div>
