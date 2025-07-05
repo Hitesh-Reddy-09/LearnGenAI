@@ -14,7 +14,8 @@ const {
   refreshToken,
   getUserStats,
   updateCourseProgress,
-  getCourseHistory
+  getCourseHistory,
+  getContinueLearning
 } = require('../controllers/authController');
 
 const {
@@ -91,6 +92,7 @@ router.post('/resend-verification', verifyToken, resendVerification);
 router.get('/stats', verifyToken, getUserStats);
 router.post('/progress', verifyToken, updateCourseProgress);
 router.get('/history', verifyToken, getCourseHistory);
+router.get('/continue-learning', verifyToken, getContinueLearning);
 
 // Admin routes (stubs)
 router.get('/users', verifyToken, requireRole(['admin']), (req, res) => {

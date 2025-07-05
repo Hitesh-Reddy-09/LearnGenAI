@@ -418,12 +418,12 @@ const getUserStats = asyncHandler(async (req, res, next) => {
 // @route   POST /api/auth/progress
 // @access  Private
 const updateCourseProgress = asyncHandler(async (req, res, next) => {
-  const { courseId, progress, completedLessonIds, completed } = req.body;
+  const { courseId, progress, completedLessonIds, completed, currentLessonIndex } = req.body;
   const user = await User.findById(req.user.id);
   if (!user) return next(new AppError('User not found', 404));
 
   // Ensure courseId is an ObjectId
-  const courseObjectId = mongoose.Types.ObjectId(courseId);
+  const courseObjectId = new mongoose.Types.ObjectId(courseId);
 
   // Add to coursesEnrolled if not already
   if (!user.coursesEnrolled.map(id => id.toString()).includes(courseObjectId.toString())) {
@@ -432,11 +432,32 @@ const updateCourseProgress = asyncHandler(async (req, res, next) => {
   } else {
     console.log('[updateCourseProgress] Course already in coursesEnrolled:', { userId: user._id, courseId, coursesEnrolled: user.coursesEnrolled });
   }
+  
   // Add to coursesCompleted if completed
   if (completed && !user.coursesCompleted.map(id => id.toString()).includes(courseObjectId.toString())) {
     user.coursesCompleted.push(courseObjectId);
     console.log('[updateCourseProgress] Added course to coursesCompleted:', { userId: user._id, courseId, coursesCompleted: user.coursesCompleted });
   }
+
+  // Update continue learning tracking
+  let continueLearningEntry = user.continueLearning.find(entry => 
+    entry.course.toString() === courseObjectId.toString()
+  );
+  
+  if (!continueLearningEntry) {
+    continueLearningEntry = {
+      course: courseObjectId,
+      lastLessonIndex: currentLessonIndex || 0,
+      lastAccessed: new Date(),
+      progress: progress || 0
+    };
+    user.continueLearning.push(continueLearningEntry);
+  } else {
+    continueLearningEntry.lastLessonIndex = currentLessonIndex || continueLearningEntry.lastLessonIndex;
+    continueLearningEntry.lastAccessed = new Date();
+    continueLearningEntry.progress = progress || continueLearningEntry.progress;
+  }
+
   await user.save();
   console.log('[updateCourseProgress] User saved:', { userId: user._id, coursesEnrolled: user.coursesEnrolled });
 
@@ -511,6 +532,36 @@ const getCourseHistory = asyncHandler(async (req, res, next) => {
   });
 });
 
+// @desc    Get continue learning data
+// @route   GET /api/auth/continue-learning
+// @access  Private
+const getContinueLearning = asyncHandler(async (req, res, next) => {
+  const user = await User.findById(req.user.id)
+    .populate({
+      path: 'continueLearning.course',
+      select: 'title thumbnail estimatedDuration category lessons',
+    });
+  
+  if (!user) return next(new AppError('User not found', 404));
+
+  // Sort by last accessed date (most recent first)
+  const continueLearningData = user.continueLearning
+    .sort((a, b) => new Date(b.lastAccessed) - new Date(a.lastAccessed))
+    .map(entry => ({
+      course: entry.course,
+      lastLessonIndex: entry.lastLessonIndex,
+      lastAccessed: entry.lastAccessed,
+      progress: entry.progress,
+      totalLessons: entry.course.lessons ? entry.course.lessons.length : 0
+    }))
+    .filter(entry => entry.course); // Filter out any null courses
+
+  res.status(200).json({
+    success: true,
+    data: continueLearningData
+  });
+});
+
 module.exports = {
   register,
   login,
@@ -525,5 +576,6 @@ module.exports = {
   refreshToken,
   getUserStats,
   updateCourseProgress,
-  getCourseHistory
+  getCourseHistory,
+  getContinueLearning
 }; 

@@ -91,6 +91,27 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Course'
   }],
+  // Continue learning tracking
+  continueLearning: [{
+    course: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Course'
+    },
+    lastLessonIndex: {
+      type: Number,
+      default: 0
+    },
+    lastAccessed: {
+      type: Date,
+      default: Date.now
+    },
+    progress: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100
+    }
+  }],
   certificates: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Certificate'

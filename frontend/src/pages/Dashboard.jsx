@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { BookOpen, Clock, Trophy, TrendingUp, Play, Star, Users, Award } from 'lucide-react';
+import { BookOpen, Clock, Trophy, TrendingUp, Play, Star, Users, Award, ArrowRight } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import Card from '../components/ui/Card';
@@ -12,24 +12,35 @@ const Dashboard = () => {
   const { colors } = useTheme();
   const { user, isAuthenticated } = useAuth();
   const [courseHistory, setCourseHistory] = useState({ enrolled: [], completed: [] });
+  const [continueLearning, setContinueLearning] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchHistory = async () => {
+    const fetchData = async () => {
       try {
-        const res = await fetch('/api/auth/history', {
+        // Fetch course history
+        const historyRes = await fetch('/api/auth/history', {
           headers: { Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : undefined }
         });
-        const data = await res.json();
-        console.log('Dashboard: /api/auth/history response:', data);
-        if (data.success) setCourseHistory(data.data);
-        else console.error('Dashboard: /api/auth/history error:', data);
+        const historyData = await historyRes.json();
+        console.log('Dashboard: /api/auth/history response:', historyData);
+        if (historyData.success) setCourseHistory(historyData.data);
+        else console.error('Dashboard: /api/auth/history error:', historyData);
+
+        // Fetch continue learning data
+        const continueRes = await fetch('/api/auth/continue-learning', {
+          headers: { Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : undefined }
+        });
+        const continueData = await continueRes.json();
+        console.log('Dashboard: /api/auth/continue-learning response:', continueData);
+        if (continueData.success) setContinueLearning(continueData.data);
+        else console.error('Dashboard: /api/auth/continue-learning error:', continueData);
       } catch (err) {
-        console.error('Dashboard: /api/auth/history fetch error:', err);
+        console.error('Dashboard: fetch error:', err);
       }
       setLoading(false);
     };
-    fetchHistory();
+    fetchData();
   }, []);
 
   // Redirect to home if not authenticated
@@ -179,10 +190,17 @@ const Dashboard = () => {
               </div>
               <div className="space-y-6">
                 {loading ? <div>Loading...</div> :
-                  courseHistory.enrolled.length === 0 ? <div>No enrolled courses yet.</div> :
-                  courseHistory.enrolled.map((course, index) => (
+                  continueLearning.length === 0 ? 
+                    <div className="text-center py-8">
+                      <BookOpen className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                      <p className="text-gray-500">No courses in progress. Start learning!</p>
+                      <Link to="/generate">
+                        <Button className="mt-4">Generate Your First Course</Button>
+                      </Link>
+                    </div> :
+                  continueLearning.map((entry, index) => (
                     <motion.div
-                      key={course._id}
+                      key={entry.course._id}
                       initial={{ y: 30, opacity: 0 }}
                       animate={{ y: 0, opacity: 1 }}
                       transition={{ delay: 0.3 + index * 0.1 }}
@@ -190,18 +208,31 @@ const Dashboard = () => {
                       <Card hover className="p-6">
                         <div className="flex flex-col md:flex-row gap-6">
                           <div className="relative">
-                            <img src={course.thumbnail} alt={course.title} className="w-40 h-28 object-cover rounded-xl" />
+                            <img src={entry.course.thumbnail} alt={entry.course.title} className="w-40 h-28 object-cover rounded-xl" />
+                            <div className="absolute top-2 left-2 bg-blue-500 text-white text-xs px-2 py-1 rounded">
+                              Lesson {entry.lastLessonIndex + 1} of {entry.totalLessons}
+                            </div>
                           </div>
                           <div className="flex-1">
-                            <h3 className="text-xl font-bold dark:text-white text-gray-900 mb-2">{course.title}</h3>
+                            <h3 className="text-xl font-bold dark:text-white text-gray-900 mb-2">{entry.course.title}</h3>
                             <div className="flex items-center text-sm mb-2">
-                              <span className="mr-4">{course.category}</span>
-                              <span>{course.estimatedDuration} min</span>
+                              <span className="mr-4">{entry.course.category}</span>
+                              <span>{entry.course.estimatedDuration} min</span>
+                              <span className="ml-4 text-gray-500">
+                                Last accessed: {new Date(entry.lastAccessed).toLocaleDateString()}
+                              </span>
                             </div>
-                            <ProgressBar progress={course.progress || 0} showPercentage size="sm" className="mb-2" />
+                            <ProgressBar progress={entry.progress || 0} showPercentage size="sm" className="mb-2" />
                             <div className="flex items-center gap-2">
-                              <Button as={Link} to={`/course/${course._id}`} size="sm">Resume</Button>
-                              {course.progress === 100 && <span className="text-green-600 font-semibold ml-2">Completed</span>}
+                              <Button as={Link} to={`/course/${entry.course._id}?lesson=${entry.lastLessonIndex}`} size="sm">
+                                <Play className="w-4 h-4 mr-2" />
+                                Continue Learning
+                              </Button>
+                              <Button variant="ghost" as={Link} to={`/course/${entry.course._id}`} size="sm">
+                                <ArrowRight className="w-4 h-4 mr-2" />
+                                View Course
+                              </Button>
+                              {entry.progress === 100 && <span className="text-green-600 font-semibold ml-2">Completed</span>}
                             </div>
                           </div>
                         </div>

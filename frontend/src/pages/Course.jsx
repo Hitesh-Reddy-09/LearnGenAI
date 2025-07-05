@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { useParams, useLocation } from 'react-router-dom';
+import { useParams, useLocation, useSearchParams } from 'react-router-dom';
 import ReactPlayer from 'react-player';
 import { Play, CheckCircle, XCircle, Circle, ChevronLeft, ChevronRight, Volume2, Maximize, MoreHorizontal, BookOpen, Loader2 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
@@ -14,6 +14,9 @@ import { useAuth } from '../contexts/AuthContext';
 const Course = () => {
   const { id } = useParams();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const lessonParam = searchParams.get('lesson');
+  
   // Use course data from navigation state, fallback to mock if not present
   const courseData = location.state?.course || {
     title: "Complete React Hooks & State Management",
@@ -183,7 +186,9 @@ const Course = () => {
     return lessonObj ? lessonObj.recommendedVideos : [];
   };
 
-  const [currentLesson, setCurrentLesson] = useState(0);
+  // Initialize currentLesson based on URL parameter or default to 0
+  const initialLesson = lessonParam ? parseInt(lessonParam) : 0;
+  const [currentLesson, setCurrentLesson] = useState(initialLesson);
   const [completedLessons, setCompletedLessons] = useState([]);
   const [showQuiz, setShowQuiz] = useState(false);
   const [videoEnded, setVideoEnded] = useState(false);
@@ -303,7 +308,8 @@ const Course = () => {
           courseId: courseData._id,
           progress,
           completedLessonIds: updatedCompleted, // always ObjectIds
-          completed
+          completed,
+          currentLessonIndex: currentLesson
         }, {
           headers: { Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : undefined }
         });
@@ -413,7 +419,8 @@ const Course = () => {
             courseId: courseData._id,
             progress: 0,
             completedLessonIds: [],
-            completed: false
+            completed: false,
+            currentLessonIndex: currentLesson
           }, {
             headers: { Authorization: localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : undefined }
           });
